@@ -99,7 +99,7 @@ void *client_thread_func(void *arg) {
 
         //printf("Client: Sending message...\n"); // debugging
 
-        sendto(data->socket_fd, send_buf, MESSAGE_SIZE, 0, (struct sockaddr *)&data->server_add, add_len);
+        sendto(data->socket_fd, &pkt, sizeof(packet_t), 0, (struct sockaddr *)&data->server_add, add_len);
         data->tx_cnt++;
 
         int ack_rec = 0;
@@ -118,7 +118,7 @@ void *client_thread_func(void *arg) {
             for (int i = 0; i < n_events; i++) {
                 if (events[i].data.fd == data->socket_fd) 
                 {
-                    recvfrom(data->socket_fd, &recv_pkt, MESSAGE_SIZE, 0, NULL, NULL);
+                    recvfrom(data->socket_fd, &recv_pkt, sizeof(packet_t), 0, NULL, NULL);
 
                     if (recv_pkt.ack_flag == 1 && recv_pkt.client_id == client_id && recv_pkt.seq_num == pkt.seq_num)
                     {
