@@ -19,9 +19,9 @@
 /* 
 Please specify the group members here
 
-# Student #1: Alice
-# Student #2: Bob
-# Student #3: Charlie
+# Student #1: Kaelin Goodlett
+# Student #2: Nathaniel Baker
+# Student #3: 
 
 */
 
@@ -68,8 +68,7 @@ typedef struct {
 void *client_thread_func(void *arg) {
     client_thread_data_t *data = (client_thread_data_t *)arg;
     struct epoll_event event, events[MAX_EVENTS];
-    char send_buf[MESSAGE_SIZE] = "ABCDEFGHIJKMLNOP";
-    char recv_buf[MESSAGE_SIZE];
+
     struct timeval start, end;
     socklen_t add_len = sizeof(data->server_add);
     int seq_num = 0;
@@ -79,6 +78,8 @@ void *client_thread_func(void *arg) {
     packet_t recv_pkt;
 
     int client_id = (int)(pthread_self() %  100000);    // makeshift client id from unique thread ids
+
+    // Initialize new variables of data
     data->client_id = client_id;
     data->seq_num = 0;
     data->tx_cnt = 0;
@@ -91,14 +92,14 @@ void *client_thread_func(void *arg) {
 
     while (data->total_messages < num_requests) 
     {
+        // Initialize packet
         pkt.client_id = client_id;
         pkt.seq_num = seq_num;
         pkt.ack_flag = 0;
         memcpy(pkt.payload, "ABCDEFGHIJKMLNOP", MESSAGE_SIZE);
         gettimeofday(&start, NULL);
 
-        //printf("Client: Sending message...\n"); // debugging
-
+        // Send packet, increment total messages sent counter
         sendto(data->socket_fd, &pkt, sizeof(packet_t), 0, (struct sockaddr *)&data->server_add, add_len);
         data->tx_cnt++;
 
@@ -108,9 +109,10 @@ void *client_thread_func(void *arg) {
         {
             int n_events = epoll_wait(data->epoll_fd, events, MAX_EVENTS, timeout);
 
+            // If there's no events, resend the packet
             if (n_events == 0)
             {
-                // Resend
+                // Resend, increment
                 sendto(data->socket_fd, &pkt, sizeof(packet_t), 0, (struct sockaddr *)&data->server_add, add_len);
                 data->tx_cnt++;
             }
@@ -118,8 +120,10 @@ void *client_thread_func(void *arg) {
             for (int i = 0; i < n_events; i++) {
                 if (events[i].data.fd == data->socket_fd) 
                 {
+                    // Receive ack flag from recv packet
                     recvfrom(data->socket_fd, &recv_pkt, sizeof(packet_t), 0, NULL, NULL);
 
+                    // If the ack flag is marked as delievered, the client id matches, and the sequence number all match, packet is good to send
                     if (recv_pkt.ack_flag == 1 && recv_pkt.client_id == client_id && recv_pkt.seq_num == pkt.seq_num)
                     {
                         gettimeofday(&end, NULL);
@@ -133,14 +137,11 @@ void *client_thread_func(void *arg) {
             }
 
         }
+        // Increase sequence number to keep packets with each thread
         seq_num++;
     }
     // Update request rate
     data->request_rate = (float) data->total_messages * 1000000 / (float) data->total_rtt;
-
-    // printf("Total RTT: %lld s\n", data->total_rtt / 1000000);
-    // printf("Total messages: %ld\n", data->total_messages);
-    // printf("RPS: %f\n", data->request_rate);
 
     close(data->socket_fd);
     close(data->epoll_fd);
@@ -168,29 +169,27 @@ void run_client() {
         pthread_create(&threads[i], NULL, client_thread_func, &thread_data[i]);
     }
 
-    // Wait for threads to complete
+    // Wait for threads to complete, initalize tracker variables
     long long total_rtt = 0;
     long total_messages = 0;
     float total_request_rate = 0;
     long long total_tx = 0;
     long long total_rx = 0;
 
+    // Tally up stats
     for (int i = 0; i < num_client_threads; i++) {
         pthread_join(threads[i], NULL);
         total_rtt += thread_data[i].total_rtt;
         total_tx += thread_data[i].tx_cnt;
-        //printf("Num of packets sent by thread: %lld\n", thread_data[i].tx_cnt);
         total_rx += thread_data[i].rx_cnt;
-        //printf("Num of packets returned by thread: %lld\n", thread_data[i].rx_cnt);
         total_messages += thread_data[i].total_messages;
         total_request_rate += thread_data[i].request_rate;
     }
 
-    //printf("Average RTT: %lld us\n", total_rtt / total_messages);
     printf("Total Sent Packets: %lld\n", total_tx);
     printf("Total Received Packets: %lld\n", total_rx);
     printf("Total Lost Packets: %lld\n", total_tx - total_rx);
-    //printf("Total Request Rate: %f messages/s\n", total_request_rate);
+
 }
 
 void run_server() {
@@ -230,17 +229,14 @@ void run_server() {
         for (int i = 0; i < n_events; i++) {
             if (events[i].data.fd == server_fd) {
                 // Accept a new connection
-                char buffer[MESSAGE_SIZE];
                 packet_t recv_pkt;
 
                 recvfrom(server_fd, &recv_pkt, sizeof(packet_t), 0, (struct sockaddr *)&client_addr, &addrlen);
 
-                printf("Server: Waiting for data...\n");
-                //int n = recvfrom(server_fd, buffer, MESSAGE_SIZE, 0, (struct sockaddr *)&client_addr, &addrlen);
-
+                // If there has been no ack, the packet is updated and sent back
                 if (recv_pkt.ack_flag == 0)
                 {
-                    //printf("Server: Received %d bytes\n", n);
+
                     packet_t ack_pkt;
                     ack_pkt.client_id = recv_pkt.client_id;
                     ack_pkt.seq_num = recv_pkt.seq_num;
