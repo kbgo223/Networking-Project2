@@ -19,9 +19,9 @@
 /* 
 Please specify the group members here
 
-# Student #1: Alice
-# Student #2: Bob
-# Student #3: Charlie
+# Student #1: Kaelin Goodlett
+# Student #2: Nathaniel Baker
+# Student #3: 
 
 */
 
@@ -63,7 +63,8 @@ void *client_thread_func(void *arg) {
     struct timeval start, end;
     socklen_t add_len = sizeof(data->server_add);
 
-
+    data->tx_cnt = 0;
+    data->rx_cnt = 0;
     // Register the socket in the epoll instance
     event.events = EPOLLIN;
     event.data.fd = data->socket_fd;
@@ -72,8 +73,6 @@ void *client_thread_func(void *arg) {
     while (data->total_messages < num_requests) 
     {
         gettimeofday(&start, NULL);
-
-        printf("Client: Sending message...\n"); // debugging
 
         sendto(data->socket_fd, send_buf, MESSAGE_SIZE, 0, (struct sockaddr *)&data->server_add, add_len);
         data->tx_cnt++;
@@ -96,10 +95,6 @@ void *client_thread_func(void *arg) {
     // Update request rate
     data->request_rate = (float) data->total_messages * 1000000 / (float) data->total_rtt;
 
-    // printf("Total RTT: %lld s\n", data->total_rtt / 1000000);
-    // printf("Total messages: %ld\n", data->total_messages);
-    // printf("RPS: %f\n", data->request_rate);
-
     close(data->socket_fd);
     close(data->epoll_fd);
     return NULL;
@@ -120,14 +115,13 @@ void run_client() {
         thread_data[i].epoll_fd = epoll_create1(0);
         thread_data[i].socket_fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket with DGRAM
         thread_data[i].server_add = server_addr;
-        //connect(thread_data[i].socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
     }
 
     for (int i = 0; i < num_client_threads; i++) {
         pthread_create(&threads[i], NULL, client_thread_func, &thread_data[i]);
     }
 
-    // Wait for threads to complete
+    // Wait for threads to complete, initialize tracker variables
     long long total_rtt = 0;
     long total_messages = 0;
     float total_request_rate = 0;
@@ -143,11 +137,10 @@ void run_client() {
         total_request_rate += thread_data[i].request_rate;
     }
 
-    printf("Average RTT: %lld us\n", total_rtt / total_messages);
     printf("Total Sent Packets: %lld\n", total_tx);
     printf("Total Received Packets: %lld\n", total_rx);
     printf("Total Lost Packets: %lld\n", total_tx - total_rx);
-    printf("Total Request Rate: %f messages/s\n", total_request_rate);
+    
 }
 
 void run_server() {
@@ -171,8 +164,7 @@ void run_server() {
         perror("bind() failed");
         exit(1);
     }
-    //listen(server_fd, 128);
-    //int client_fd = accept(server_fd, NULL, NULL);
+
 
     printf("Server is running on port %d...\n", server_port);
 
@@ -188,16 +180,12 @@ void run_server() {
         for (int i = 0; i < n_events; i++) {
             if (events[i].data.fd == server_fd) {
                 // Accept a new connection
-                //int client_fd = accept(server_fd, NULL, NULL);
                 char buffer[MESSAGE_SIZE];
 
-                printf("Server: Waiting for data...\n");
                 int n = recvfrom(server_fd, buffer, MESSAGE_SIZE, 0, (struct sockaddr *)&client_addr, &addrlen);
-
 
                 if (n > 0)
                 {
-                    printf("Server: Received %d bytes\n", n);
                     sendto(server_fd, buffer, MESSAGE_SIZE, 0, (struct sockaddr *)&client_addr, addrlen);
                 }
             } 
